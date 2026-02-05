@@ -121,6 +121,7 @@ type RowData = {
   selectedMotherId: number | null;
   candidatesById: Map<number, CandidateResult>;
   selectionMap: Map<number, number>;
+  jumpTargetId: number | null;
   onSelectDaughter: (id: number) => void;
   onSelectMother: (candidate: CandidateResult, daughterId: number) => void;
   onHoverStart: (event: MouseEvent, candidate: CandidateResult) => void;
@@ -141,6 +142,7 @@ export default function App() {
   const [selectionRecords, setSelectionRecords] = useState<
     Array<{ daughterId: number; motherId: number; score: number; timestamp: string }>
   >([]);
+  const [jumpTargetId, setJumpTargetId] = useState<number | null>(null);
   const [historyFilter, setHistoryFilter] = useState("");
   const [limit, setLimit] = useState(200);
   const [scope, setScope] = useState("sentence");
@@ -215,6 +217,7 @@ export default function App() {
     setCandidates([]);
     setStaticData(null);
     setSelectionMap(new Map());
+    setJumpTargetId(null);
 
     if (DATA_MODE === "static") {
       const slug = book.replace(/\s+/g, "_");
@@ -260,12 +263,13 @@ export default function App() {
         }> = [];
         Object.entries(parsed).forEach(([daughterId, entry]) => {
           const id = Number(daughterId);
-          map.set(id, entry.motherId);
+          const motherId = Number(entry.motherId ?? 0);
+          map.set(id, motherId);
           records.push({
             daughterId: id,
-            motherId: entry.motherId,
-            score: entry.score,
-            timestamp: entry.timestamp,
+            motherId,
+            score: Number(entry.score ?? 0),
+            timestamp: String(entry.timestamp ?? ""),
           });
         });
         setSelectionMap(map);
@@ -295,14 +299,15 @@ export default function App() {
           .forEach((line) => {
             try {
               const item = JSON.parse(line);
-              if (
-                typeof item.daughter_clause_atom === "number" &&
-                typeof item.chosen_mother_clause_atom === "number"
-              ) {
-                map.set(item.daughter_clause_atom, item.chosen_mother_clause_atom);
+              if (typeof item.daughter_clause_atom === "number") {
+                const motherId =
+                  typeof item.chosen_mother_clause_atom === "number"
+                    ? item.chosen_mother_clause_atom
+                    : 0;
+                map.set(item.daughter_clause_atom, motherId);
                 records.push({
                   daughterId: item.daughter_clause_atom,
-                  motherId: item.chosen_mother_clause_atom,
+                  motherId,
                   score: Number(item.score_at_choice ?? 0),
                   timestamp: String(item.timestamp ?? ""),
                 });
@@ -382,7 +387,11 @@ export default function App() {
         record.daughterId.toString(),
         record.motherId.toString(),
         daughter ? `${getBookLabel(daughter.ref.book)} ${daughter.ref.chapter}:${daughter.ref.verse}` : "",
-        mother ? `${getBookLabel(mother.ref.book)} ${mother.ref.chapter}:${mother.ref.verse}` : "",
+        record.motherId === 0
+          ? "ROOT root 루트"
+          : mother
+          ? `${getBookLabel(mother.ref.book)} ${mother.ref.chapter}:${mother.ref.verse}`
+          : "",
       ]
         .join(" ")
         .toLowerCase();
@@ -431,7 +440,7 @@ export default function App() {
         if (includeKorean) {
           row.book_ko = getBookLabel(book);
           row.daughter_ref_ko = formatRef(daughter);
-          row.mother_ref_ko = formatRef(mother);
+          row.mother_ref_ko = record.motherId === 0 ? "ROOT" : formatRef(mother);
         }
         return row;
       });
@@ -473,6 +482,52 @@ export default function App() {
     const index = atoms.findIndex((atom) => atom.id === atomId);
     if (index < 0) return;
     listRef.current?.scrollToItem(index, "center");
+  };
+
+  const handleSelectRoot = async (daughterId: number | null) => {
+    if (!book || daughterId == null) return;
+    const timestamp = new Date().toISOString();
+    const nextMap = new Map(selectionMap);
+    nextMap.set(daughterId, 0);
+    setSelectionMap(nextMap);
+
+    setSelectionRecords((prev) => {
+      const next = prev.filter((item) => item.daughterId !== daughterId);
+      next.unshift({
+        daughterId,
+        motherId: 0,
+        score: 0,
+        timestamp,
+      });
+      return next;
+    });
+
+    const localKey = `bhsa-selections-${book}`;
+    const raw = window.localStorage.getItem(localKey);
+    const existing = raw ? JSON.parse(raw) : {};
+    existing[String(daughterId)] = {
+      motherId: 0,
+      score: 0,
+      timestamp,
+    };
+    window.localStorage.setItem(localKey, JSON.stringify(existing));
+
+    if (DATA_MODE === "static") {
+      setSelectedMotherId(null);
+      return;
+    }
+
+    await fetch(`${API_BASE}/api/book/${encodeURIComponent(book)}/selection`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        book,
+        daughter_clause_atom: daughterId,
+        chosen_mother_clause_atom: 0,
+        score_at_choice: 0,
+      }),
+    });
+    setSelectedMotherId(null);
   };
 
   const handleSelectMother = async (
@@ -533,9 +588,12 @@ export default function App() {
       selectedMotherId,
       candidatesById,
       selectionMap,
+      jumpTargetId,
       onSelectDaughter: (id: number) => {
         setSelectedId(id);
-        setSelectedMotherId(selectionMap.get(id) ?? null);
+        const motherId = selectionMap.get(id) ?? null;
+        setSelectedMotherId(motherId && motherId > 0 ? motherId : null);
+        setJumpTargetId(null);
       },
       onSelectMother: (candidate: CandidateResult, daughterId: number) => {
         handleSelectMother(candidate, daughterId);
@@ -572,6 +630,7 @@ export default function App() {
     book,
     tooltip.visible,
     selectionMap,
+    jumpTargetId,
   ]);
 
   return (
@@ -722,7 +781,9 @@ export default function App() {
                         <div className="history-sub">
                           <span className="history-label">어미</span>
                           <span>
-                            {mother
+                            {record.motherId === 0
+                              ? "ROOT"
+                              : mother
                               ? `${getBookLabel(mother.ref.book)} ${mother.ref.chapter}:${mother.ref.verse}`
                               : `#${record.motherId}`}
                           </span>
@@ -730,7 +791,13 @@ export default function App() {
                       </div>
                       <button
                         className="history-jump"
-                        onClick={() => setSelectedId(record.daughterId)}
+                        onClick={() => {
+                          setSelectedId(record.daughterId);
+                          const motherId = selectionMap.get(record.daughterId) ?? null;
+                          setSelectedMotherId(motherId && motherId > 0 ? motherId : null);
+                          setJumpTargetId(null);
+                          scrollToAtom(record.daughterId);
+                        }}
                       >
                         이동
                       </button>
@@ -746,41 +813,60 @@ export default function App() {
             <p>선택된 딸 절의 어미절 후보를 점수 순으로 확인합니다.</p>
             {!selectedId ? (
               <div className="history-empty">딸 절을 먼저 선택하세요.</div>
-            ) : candidates.length === 0 ? (
-              <div className="history-empty">후보가 없습니다.</div>
             ) : (
-              <div className="rank-list">
-                {rankedCandidates.slice(0, 10).map((candidate) => {
-                  const atom = atomById.get(candidate.candidateId);
-                  const label = atom
-                    ? `${getBookLabel(atom.ref.book)} ${atom.ref.chapter}:${atom.ref.verse}`
-                    : `#${candidate.candidateId}`;
-                  return (
-                    <div
-                      key={candidate.candidateId}
-                      className="rank-item"
-                      onClick={() => scrollToAtom(candidate.candidateId)}
-                    >
-                      <div className="rank-main">
-                        <div className="rank-score">{Math.round(candidate.score * 100)}</div>
-                        <div className="rank-info">
-                          <div className="rank-label">{label}</div>
-                          <div className="rank-meta">순위 {candidate.rank}</div>
+              <>
+                <div className="rank-actions">
+                  <button className="root-select" onClick={() => handleSelectRoot(selectedId)}>
+                    ROOT로 선택
+                  </button>
+                  {selectionMap.get(selectedId) === 0 && (
+                    <span className="root-selected">현재 ROOT 선택됨</span>
+                  )}
+                </div>
+                {candidates.length === 0 ? (
+                  <div className="history-empty">후보가 없습니다.</div>
+                ) : (
+                  <div className="rank-list">
+                    {rankedCandidates.slice(0, 10).map((candidate) => {
+                      const atom = atomById.get(candidate.candidateId);
+                      const label = atom
+                        ? `${getBookLabel(atom.ref.book)} ${atom.ref.chapter}:${atom.ref.verse}`
+                        : `#${candidate.candidateId}`;
+                      const isJumpTarget = jumpTargetId === candidate.candidateId;
+                      return (
+                        <div
+                          key={candidate.candidateId}
+                          className={`rank-item ${isJumpTarget ? "active" : ""}`}
+                          onClick={() => {
+                            setJumpTargetId(candidate.candidateId);
+                            scrollToAtom(candidate.candidateId);
+                          }}
+                        >
+                          <div className="rank-main">
+                            <div className="rank-score">{Math.round(candidate.score * 100)}</div>
+                            <div className="rank-info">
+                              <div className="rank-label">
+                                {label}
+                                {isJumpTarget && <span className="rank-arrow">-&gt;</span>}
+                              </div>
+                              <div className="rank-meta">순위 {candidate.rank}</div>
+                            </div>
+                          </div>
+                          <button
+                            className="rank-select"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleSelectMother(candidate, selectedId);
+                            }}
+                          >
+                            선택
+                          </button>
                         </div>
-                      </div>
-                      <button
-                        className="rank-select"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleSelectMother(candidate, selectedId);
-                        }}
-                      >
-                        선택
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </aside>
@@ -844,6 +930,8 @@ function Row({ index, style, data }: ListChildComponentProps<RowData>) {
   const isDaughter = data.selectedId === atom.id;
   const isChosen = data.selectedMotherId === atom.id;
   const isCompleted = data.selectionMap.has(atom.id);
+  const isJumpTarget = data.jumpTargetId === atom.id;
+  const isRootSelected = data.selectionMap.get(atom.id) === 0;
   const koreanLiteral = atom.koreanLiteral;
   const koreanText = koreanLiteral && koreanLiteral.trim() ? koreanLiteral : "직역 정보 없음";
 
@@ -853,7 +941,7 @@ function Row({ index, style, data }: ListChildComponentProps<RowData>) {
     <div
       className={`row ${isCandidate ? "candidate" : ""} ${isDaughter ? "daughter" : ""} ${
         isChosen ? "chosen" : ""
-      } ${isCompleted ? "completed" : ""}`}
+      } ${isCompleted ? "completed" : ""} ${isJumpTarget ? "jump-target" : ""}`}
       style={{ ...style, ["--heat" as string]: heat } as React.CSSProperties}
       onClick={() => data.onSelectDaughter(atom.id)}
       onMouseEnter={(event) =>
@@ -867,6 +955,8 @@ function Row({ index, style, data }: ListChildComponentProps<RowData>) {
           <span className="ref">
             {getBookLabel(atom.ref.book)} {atom.ref.chapter}:{atom.ref.verse}
           </span>
+          {isJumpTarget && <span className="jump-badge">-&gt;</span>}
+          {isDaughter && isRootSelected && <span className="root-badge">ROOT</span>}
           <span className="atom-id">#{atom.id}</span>
         </div>
         <div className="row-text-grid">
