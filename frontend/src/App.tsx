@@ -1,4 +1,5 @@
 import { FixedSizeList as List, ListChildComponentProps } from "react-window";
+import type { FixedSizeList } from "react-window";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { computeCandidates, CandidateResult, ClauseAtom, StaticBookData } from "./scoring";
@@ -114,6 +115,19 @@ type TooltipState = {
   data: CandidateResult | null;
 };
 
+type RowData = {
+  atoms: ClauseAtom[];
+  selectedId: number | null;
+  selectedMotherId: number | null;
+  candidatesById: Map<number, CandidateResult>;
+  selectionMap: Map<number, number>;
+  onSelectDaughter: (id: number) => void;
+  onSelectMother: (candidate: CandidateResult, daughterId: number) => void;
+  onHoverStart: (event: MouseEvent, candidate: CandidateResult) => void;
+  onHoverMove: (event: MouseEvent) => void;
+  onHoverEnd: () => void;
+};
+
 
 export default function App() {
   const [books, setBooks] = useState<string[]>([]);
@@ -140,12 +154,22 @@ export default function App() {
   });
 
   const tooltipTimer = useRef<number | null>(null);
+  const listRef = useRef<FixedSizeList<RowData>>(null);
 
   const [candidates, setCandidates] = useState<CandidateResult[]>([]);
   const candidatesById = useMemo(() => {
     const map = new Map<number, CandidateResult>();
     candidates.forEach((c) => map.set(c.candidateId, c));
     return map;
+  }, [candidates]);
+
+  const rankedCandidates = useMemo(() => {
+    return [...candidates].sort((a, b) => {
+      if (a.rank !== b.rank) {
+        return a.rank - b.rank;
+      }
+      return b.score - a.score;
+    });
   }, [candidates]);
 
   useEffect(() => {
@@ -378,19 +402,43 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  const exportSelections = async (format: "jsonl" | "csv") => {
+  const escapeCsv = (value: string | number) => {
+    const text = String(value ?? "");
+    if (/[",\n]/.test(text)) {
+      return `"${text.replace(/"/g, "\"\"")}"`;
+    }
+    return text;
+  };
+
+  const formatRef = (atom?: ClauseAtom) => {
+    if (!atom) return "";
+    return `${getBookLabel(atom.ref.book)} ${atom.ref.chapter}:${atom.ref.verse}`;
+  };
+
+  const exportSelections = async (format: "jsonl" | "csv", includeKorean = false) => {
     if (!book) return;
-    if (DATA_MODE === "static") {
-      const rows = selectionRecords.map((record) => ({
-        book,
-        daughter_clause_atom: record.daughterId,
-        chosen_mother_clause_atom: record.motherId,
-        score_at_choice: record.score,
-        timestamp: record.timestamp,
-      }));
+    if (DATA_MODE === "static" || includeKorean) {
+      const rows = selectionRecords.map((record) => {
+        const daughter = atomById.get(record.daughterId);
+        const mother = atomById.get(record.motherId);
+        const row: Record<string, string | number> = {
+          book,
+          daughter_clause_atom: record.daughterId,
+          chosen_mother_clause_atom: record.motherId,
+          score_at_choice: record.score,
+          timestamp: record.timestamp,
+        };
+        if (includeKorean) {
+          row.book_ko = getBookLabel(book);
+          row.daughter_ref_ko = formatRef(daughter);
+          row.mother_ref_ko = formatRef(mother);
+        }
+        return row;
+      });
       if (format === "jsonl") {
         const content = rows.map((row) => JSON.stringify(row)).join("\\n");
-        downloadFile(`${book}-selections.jsonl`, content, "application/jsonl");
+        const suffix = includeKorean ? "-ko" : "";
+        downloadFile(`${book}-selections${suffix}.jsonl`, content, "application/jsonl");
         return;
       }
       const header = [
@@ -400,27 +448,31 @@ export default function App() {
         "score_at_choice",
         "timestamp",
       ];
+      if (includeKorean) {
+        header.push("book_ko", "daughter_ref_ko", "mother_ref_ko");
+      }
       const lines = [header.join(",")];
       rows.forEach((row) => {
-        lines.push(
-          [
-            row.book,
-            row.daughter_clause_atom,
-            row.chosen_mother_clause_atom,
-            row.score_at_choice,
-            row.timestamp,
-          ].join(",")
-        );
+        const values = header.map((key) => escapeCsv(row[key] ?? ""));
+        lines.push(values.join(","));
       });
-      downloadFile(`${book}-selections.csv`, lines.join("\\n"), "text/csv");
+      const suffix = includeKorean ? "-ko" : "";
+      downloadFile(`${book}-selections${suffix}.csv`, lines.join("\\n"), "text/csv");
       return;
     }
+
     const res = await fetch(
       `${API_BASE}/api/book/${encodeURIComponent(book)}/export?format=${format}`
     );
     const content = await res.text();
     const ext = format === "csv" ? "csv" : "jsonl";
     downloadFile(`${book}-selections.${ext}`, content, "text/plain");
+  };
+
+  const scrollToAtom = (atomId: number) => {
+    const index = atoms.findIndex((atom) => atom.id === atomId);
+    if (index < 0) return;
+    listRef.current?.scrollToItem(index, "center");
   };
 
   const handleSelectMother = async (
@@ -480,6 +532,7 @@ export default function App() {
       selectedId,
       selectedMotherId,
       candidatesById,
+      selectionMap,
       onSelectDaughter: (id: number) => {
         setSelectedId(id);
         setSelectedMotherId(selectionMap.get(id) ?? null);
@@ -602,6 +655,13 @@ export default function App() {
                 <p>저장된 선택</p>
               </div>
             </div>
+            <div className="legend-item">
+              <span className="swatch completed" />
+              <div>
+                <strong>선택 완료</strong>
+                <p>어미절이 저장된 딸 절</p>
+              </div>
+            </div>
           </div>
 
           <div className="hint">
@@ -621,6 +681,18 @@ export default function App() {
               </button>
               <button className="export-button ghost" onClick={() => exportSelections("jsonl")}>
                 JSONL 다운로드
+              </button>
+              <button
+                className="export-button"
+                onClick={() => exportSelections("csv", true)}
+              >
+                CSV(한글)
+              </button>
+              <button
+                className="export-button ghost"
+                onClick={() => exportSelections("jsonl", true)}
+              >
+                JSONL(한글)
               </button>
             </div>
             <input
@@ -678,13 +750,17 @@ export default function App() {
               <div className="history-empty">후보가 없습니다.</div>
             ) : (
               <div className="rank-list">
-                {candidates.slice(0, 12).map((candidate) => {
+                {rankedCandidates.slice(0, 10).map((candidate) => {
                   const atom = atomById.get(candidate.candidateId);
                   const label = atom
                     ? `${getBookLabel(atom.ref.book)} ${atom.ref.chapter}:${atom.ref.verse}`
                     : `#${candidate.candidateId}`;
                   return (
-                    <div key={candidate.candidateId} className="rank-item">
+                    <div
+                      key={candidate.candidateId}
+                      className="rank-item"
+                      onClick={() => scrollToAtom(candidate.candidateId)}
+                    >
                       <div className="rank-main">
                         <div className="rank-score">{Math.round(candidate.score * 100)}</div>
                         <div className="rank-info">
@@ -694,7 +770,10 @@ export default function App() {
                       </div>
                       <button
                         className="rank-select"
-                        onClick={() => handleSelectMother(candidate, selectedId)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleSelectMother(candidate, selectedId);
+                        }}
                       >
                         선택
                       </button>
@@ -718,6 +797,7 @@ export default function App() {
               itemCount={atoms.length}
               itemSize={84}
               itemData={listData}
+              ref={listRef}
               className="virtual-list"
             >
               {Row}
@@ -757,24 +837,13 @@ export default function App() {
   );
 }
 
-type RowData = {
-  atoms: ClauseAtom[];
-  selectedId: number | null;
-  selectedMotherId: number | null;
-  candidatesById: Map<number, CandidateResult>;
-  onSelectDaughter: (id: number) => void;
-  onSelectMother: (candidate: CandidateResult, daughterId: number) => void;
-  onHoverStart: (event: MouseEvent, candidate: CandidateResult) => void;
-  onHoverMove: (event: MouseEvent) => void;
-  onHoverEnd: () => void;
-};
-
 function Row({ index, style, data }: ListChildComponentProps<RowData>) {
   const atom = data.atoms[index];
   const candidate = data.candidatesById.get(atom.id);
   const isCandidate = Boolean(candidate);
   const isDaughter = data.selectedId === atom.id;
   const isChosen = data.selectedMotherId === atom.id;
+  const isCompleted = data.selectionMap.has(atom.id);
   const koreanLiteral = atom.koreanLiteral;
   const koreanText = koreanLiteral && koreanLiteral.trim() ? koreanLiteral : "직역 정보 없음";
 
@@ -784,7 +853,7 @@ function Row({ index, style, data }: ListChildComponentProps<RowData>) {
     <div
       className={`row ${isCandidate ? "candidate" : ""} ${isDaughter ? "daughter" : ""} ${
         isChosen ? "chosen" : ""
-      }`}
+      } ${isCompleted ? "completed" : ""}`}
       style={{ ...style, ["--heat" as string]: heat } as React.CSSProperties}
       onClick={() => data.onSelectDaughter(atom.id)}
       onMouseEnter={(event) =>

@@ -204,6 +204,10 @@ input[type="range"] {
   background: rgba(13, 39, 58, 0.7);
 }
 
+.swatch.completed {
+  background: rgba(68, 142, 106, 0.7);
+}
+
 .hint {
   margin-top: 16px;
   padding: 12px;
@@ -323,6 +327,14 @@ input[type="range"] {
   border-radius: 10px;
   border: 1px solid rgba(30, 154, 165, 0.2);
   background: rgba(30, 154, 165, 0.08);
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.rank-item:hover {
+  transform: translateX(2px);
+  border-color: rgba(30, 154, 165, 0.4);
+  background: rgba(30, 154, 165, 0.14);
 }
 
 .rank-main {
@@ -414,6 +426,14 @@ input[type="range"] {
 
 .row.chosen {
   outline: 2px solid rgba(13, 39, 58, 0.8);
+}
+
+.row.completed {
+  box-shadow: inset 0 0 0 2px rgba(68, 142, 106, 0.45);
+}
+
+.row.completed:not(.candidate):not(.daughter) {
+  background: rgba(68, 142, 106, 0.08);
 }
 
 .row:hover {
