@@ -213,6 +213,160 @@ input[type="range"] {
   font-size: 14px;
 }
 
+.panel-section {
+  margin-top: 18px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(31, 27, 22, 0.08);
+  background: rgba(255, 250, 242, 0.6);
+}
+
+.panel-section h3 {
+  font-family: "Black Han Sans", sans-serif;
+  font-size: 16px;
+  margin: 0 0 6px;
+}
+
+.panel-section p {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.history-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.export-button {
+  border: 1px solid rgba(30, 154, 165, 0.5);
+  border-radius: 999px;
+  background: rgba(30, 154, 165, 0.12);
+  color: var(--ink);
+  font-family: "Noto Sans KR", sans-serif;
+  font-size: 11px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.export-button.ghost {
+  background: transparent;
+}
+
+.history-filter {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-family: "Noto Sans KR", sans-serif;
+  margin-bottom: 10px;
+}
+
+.history-list {
+  display: grid;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(31, 27, 22, 0.08);
+}
+
+.history-main {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.history-label {
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.history-jump {
+  border: none;
+  background: rgba(13, 39, 58, 0.85);
+  color: #fff7ed;
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.history-empty {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.rank-list {
+  display: grid;
+  gap: 8px;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.rank-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(30, 154, 165, 0.2);
+  background: rgba(30, 154, 165, 0.08);
+}
+
+.rank-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rank-score {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(30, 154, 165, 0.2);
+  display: grid;
+  place-items: center;
+  font-family: "Black Han Sans", sans-serif;
+  color: var(--accent);
+}
+
+.rank-info {
+  display: grid;
+  gap: 2px;
+}
+
+.rank-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.rank-meta {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.rank-select {
+  border: none;
+  background: rgba(13, 39, 58, 0.85);
+  color: #fff7ed;
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
 .list-panel {
   position: relative;
   background: rgba(255, 250, 242, 0.5);

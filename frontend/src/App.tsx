@@ -124,6 +124,10 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedMotherId, setSelectedMotherId] = useState<number | null>(null);
   const [selectionMap, setSelectionMap] = useState<Map<number, number>>(new Map());
+  const [selectionRecords, setSelectionRecords] = useState<
+    Array<{ daughterId: number; motherId: number; score: number; timestamp: string }>
+  >([]);
+  const [historyFilter, setHistoryFilter] = useState("");
   const [limit, setLimit] = useState(200);
   const [scope, setScope] = useState("sentence");
   const [isLoadingAtoms, setIsLoadingAtoms] = useState(false);
@@ -215,6 +219,7 @@ export default function App() {
       const raw = window.localStorage.getItem(key);
       if (!raw) {
         setSelectionMap(new Map());
+        setSelectionRecords([]);
         return;
       }
       try {
@@ -223,12 +228,28 @@ export default function App() {
           { motherId: number; score: number; timestamp: string }
         >;
         const map = new Map<number, number>();
+        const records: Array<{
+          daughterId: number;
+          motherId: number;
+          score: number;
+          timestamp: string;
+        }> = [];
         Object.entries(parsed).forEach(([daughterId, entry]) => {
-          map.set(Number(daughterId), entry.motherId);
+          const id = Number(daughterId);
+          map.set(id, entry.motherId);
+          records.push({
+            daughterId: id,
+            motherId: entry.motherId,
+            score: entry.score,
+            timestamp: entry.timestamp,
+          });
         });
         setSelectionMap(map);
+        records.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+        setSelectionRecords(records);
       } catch {
         setSelectionMap(new Map());
+        setSelectionRecords([]);
       }
       return;
     }
@@ -237,6 +258,12 @@ export default function App() {
       .then((res) => res.text())
       .then((text) => {
         const map = new Map<number, number>();
+        const records: Array<{
+          daughterId: number;
+          motherId: number;
+          score: number;
+          timestamp: string;
+        }> = [];
         text
           .split("\n")
           .map((line) => line.trim())
@@ -249,14 +276,25 @@ export default function App() {
                 typeof item.chosen_mother_clause_atom === "number"
               ) {
                 map.set(item.daughter_clause_atom, item.chosen_mother_clause_atom);
+                records.push({
+                  daughterId: item.daughter_clause_atom,
+                  motherId: item.chosen_mother_clause_atom,
+                  score: Number(item.score_at_choice ?? 0),
+                  timestamp: String(item.timestamp ?? ""),
+                });
               }
             } catch {
               return;
             }
           });
         setSelectionMap(map);
+        records.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+        setSelectionRecords(records);
       })
-      .catch(() => setSelectionMap(new Map()));
+      .catch(() => {
+        setSelectionMap(new Map());
+        setSelectionRecords([]);
+      });
   }, [book]);
 
   useEffect(() => {
@@ -304,6 +342,138 @@ export default function App() {
     };
   }, []);
 
+  const atomById = useMemo(() => {
+    const map = new Map<number, ClauseAtom>();
+    atoms.forEach((atom) => map.set(atom.id, atom));
+    return map;
+  }, [atoms]);
+
+  const filteredHistory = useMemo(() => {
+    const keyword = historyFilter.trim();
+    if (!keyword) return selectionRecords;
+    return selectionRecords.filter((record) => {
+      const daughter = atomById.get(record.daughterId);
+      const mother = atomById.get(record.motherId);
+      const pieces = [
+        record.daughterId.toString(),
+        record.motherId.toString(),
+        daughter ? `${getBookLabel(daughter.ref.book)} ${daughter.ref.chapter}:${daughter.ref.verse}` : "",
+        mother ? `${getBookLabel(mother.ref.book)} ${mother.ref.chapter}:${mother.ref.verse}` : "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return pieces.includes(keyword.toLowerCase());
+    });
+  }, [selectionRecords, historyFilter, atomById]);
+
+  const downloadFile = (filename: string, content: string, type: string) => {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportSelections = async (format: "jsonl" | "csv") => {
+    if (!book) return;
+    if (DATA_MODE === "static") {
+      const rows = selectionRecords.map((record) => ({
+        book,
+        daughter_clause_atom: record.daughterId,
+        chosen_mother_clause_atom: record.motherId,
+        score_at_choice: record.score,
+        timestamp: record.timestamp,
+      }));
+      if (format === "jsonl") {
+        const content = rows.map((row) => JSON.stringify(row)).join("\\n");
+        downloadFile(`${book}-selections.jsonl`, content, "application/jsonl");
+        return;
+      }
+      const header = [
+        "book",
+        "daughter_clause_atom",
+        "chosen_mother_clause_atom",
+        "score_at_choice",
+        "timestamp",
+      ];
+      const lines = [header.join(",")];
+      rows.forEach((row) => {
+        lines.push(
+          [
+            row.book,
+            row.daughter_clause_atom,
+            row.chosen_mother_clause_atom,
+            row.score_at_choice,
+            row.timestamp,
+          ].join(",")
+        );
+      });
+      downloadFile(`${book}-selections.csv`, lines.join("\\n"), "text/csv");
+      return;
+    }
+    const res = await fetch(
+      `${API_BASE}/api/book/${encodeURIComponent(book)}/export?format=${format}`
+    );
+    const content = await res.text();
+    const ext = format === "csv" ? "csv" : "jsonl";
+    downloadFile(`${book}-selections.${ext}`, content, "text/plain");
+  };
+
+  const handleSelectMother = async (
+    candidate: CandidateResult,
+    daughterId: number | null
+  ) => {
+    if (!book || daughterId == null) return;
+    const payload = {
+      book,
+      daughter_clause_atom: daughterId,
+      chosen_mother_clause_atom: candidate.candidateId,
+      score_at_choice: candidate.score,
+    };
+    const timestamp = new Date().toISOString();
+
+    const nextMap = new Map(selectionMap);
+    nextMap.set(daughterId, candidate.candidateId);
+    setSelectionMap(nextMap);
+
+    setSelectionRecords((prev) => {
+      const next = prev.filter((item) => item.daughterId !== daughterId);
+      next.unshift({
+        daughterId,
+        motherId: candidate.candidateId,
+        score: candidate.score,
+        timestamp,
+      });
+      return next;
+    });
+
+    const localKey = `bhsa-selections-${book}`;
+    const raw = window.localStorage.getItem(localKey);
+    const existing = raw ? JSON.parse(raw) : {};
+    existing[String(daughterId)] = {
+      motherId: candidate.candidateId,
+      score: candidate.score,
+      timestamp,
+    };
+    window.localStorage.setItem(localKey, JSON.stringify(existing));
+
+    if (DATA_MODE === "static") {
+      setSelectedMotherId(candidate.candidateId);
+      return;
+    }
+
+    await fetch(`${API_BASE}/api/book/${encodeURIComponent(book)}/selection`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    setSelectedMotherId(candidate.candidateId);
+  };
+
   const listData = useMemo(() => {
     return {
       atoms,
@@ -314,40 +484,8 @@ export default function App() {
         setSelectedId(id);
         setSelectedMotherId(selectionMap.get(id) ?? null);
       },
-      onSelectMother: async (candidate: CandidateResult, daughterId: number) => {
-        if (!book) return;
-        const payload = {
-          book,
-          daughter_clause_atom: daughterId,
-          chosen_mother_clause_atom: candidate.candidateId,
-          score_at_choice: candidate.score,
-        };
-
-        const nextMap = new Map(selectionMap);
-        nextMap.set(daughterId, candidate.candidateId);
-        setSelectionMap(nextMap);
-
-        const localKey = `bhsa-selections-${book}`;
-        const raw = window.localStorage.getItem(localKey);
-        const existing = raw ? JSON.parse(raw) : {};
-        existing[String(daughterId)] = {
-          motherId: candidate.candidateId,
-          score: candidate.score,
-          timestamp: new Date().toISOString(),
-        };
-        window.localStorage.setItem(localKey, JSON.stringify(existing));
-
-        if (DATA_MODE === "static") {
-          setSelectedMotherId(candidate.candidateId);
-          return;
-        }
-
-        await fetch(`${API_BASE}/api/book/${encodeURIComponent(book)}/selection`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        setSelectedMotherId(candidate.candidateId);
+      onSelectMother: (candidate: CandidateResult, daughterId: number) => {
+        handleSelectMother(candidate, daughterId);
       },
       onHoverStart: (event: MouseEvent, candidate: CandidateResult) => {
         if (tooltipTimer.current) {
@@ -472,6 +610,99 @@ export default function App() {
               올리면 점수 근거를 확인할 수 있습니다. "어미절 선택"을 누르면
               저장됩니다.
             </p>
+          </div>
+
+          <div className="panel-section">
+            <h3>선택 기록</h3>
+            <p>저장된 어미절 선택을 필터링하고 내려받을 수 있습니다.</p>
+            <div className="history-actions">
+              <button className="export-button" onClick={() => exportSelections("csv")}>
+                CSV 다운로드
+              </button>
+              <button className="export-button ghost" onClick={() => exportSelections("jsonl")}>
+                JSONL 다운로드
+              </button>
+            </div>
+            <input
+              className="history-filter"
+              placeholder="책/장:절/ID 검색"
+              value={historyFilter}
+              onChange={(event) => setHistoryFilter(event.target.value)}
+            />
+            <div className="history-list">
+              {filteredHistory.length === 0 ? (
+                <div className="history-empty">저장된 선택이 없습니다.</div>
+              ) : (
+                filteredHistory.slice(0, 12).map((record) => {
+                  const daughter = atomById.get(record.daughterId);
+                  const mother = atomById.get(record.motherId);
+                  return (
+                    <div key={record.daughterId} className="history-item">
+                      <div className="history-main">
+                        <div className="history-title">
+                          <span className="history-label">딸</span>
+                          <span>
+                            {daughter
+                              ? `${getBookLabel(daughter.ref.book)} ${daughter.ref.chapter}:${daughter.ref.verse}`
+                              : `#${record.daughterId}`}
+                          </span>
+                        </div>
+                        <div className="history-sub">
+                          <span className="history-label">어미</span>
+                          <span>
+                            {mother
+                              ? `${getBookLabel(mother.ref.book)} ${mother.ref.chapter}:${mother.ref.verse}`
+                              : `#${record.motherId}`}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        className="history-jump"
+                        onClick={() => setSelectedId(record.daughterId)}
+                      >
+                        이동
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <div className="panel-section">
+            <h3>후보 랭킹</h3>
+            <p>선택된 딸 절의 어미절 후보를 점수 순으로 확인합니다.</p>
+            {!selectedId ? (
+              <div className="history-empty">딸 절을 먼저 선택하세요.</div>
+            ) : candidates.length === 0 ? (
+              <div className="history-empty">후보가 없습니다.</div>
+            ) : (
+              <div className="rank-list">
+                {candidates.slice(0, 12).map((candidate) => {
+                  const atom = atomById.get(candidate.candidateId);
+                  const label = atom
+                    ? `${getBookLabel(atom.ref.book)} ${atom.ref.chapter}:${atom.ref.verse}`
+                    : `#${candidate.candidateId}`;
+                  return (
+                    <div key={candidate.candidateId} className="rank-item">
+                      <div className="rank-main">
+                        <div className="rank-score">{Math.round(candidate.score * 100)}</div>
+                        <div className="rank-info">
+                          <div className="rank-label">{label}</div>
+                          <div className="rank-meta">순위 {candidate.rank}</div>
+                        </div>
+                      </div>
+                      <button
+                        className="rank-select"
+                        onClick={() => handleSelectMother(candidate, selectedId)}
+                      >
+                        선택
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </aside>
 
