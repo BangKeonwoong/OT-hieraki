@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Unbounded:wght@300;500;700&family=Fraunces:opsz,wght@9..144,300;400;600&family=JetBrains+Mono:wght@400;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=JetBrains+Mono:wght@400;600&family=Noto+Sans+KR:wght@300;500;700&family=Noto+Serif+Hebrew:wght@400;600&family=Noto+Serif+KR:wght@300;400;600&display=swap");
 
 :root {
   color-scheme: light;
@@ -20,7 +20,7 @@
 
 body {
   margin: 0;
-  font-family: "Fraunces", serif;
+  font-family: "Noto Serif KR", "Noto Serif Hebrew", serif;
   color: var(--ink);
   background:
     radial-gradient(circle at 10% 15%, rgba(30, 154, 165, 0.18), transparent 40%),
@@ -55,7 +55,7 @@ body::after {
 }
 
 .eyebrow {
-  font-family: "JetBrains Mono", monospace;
+  font-family: "Noto Sans KR", sans-serif;
   text-transform: uppercase;
   letter-spacing: 0.2em;
   font-size: 11px;
@@ -64,7 +64,7 @@ body::after {
 }
 
 h1 {
-  font-family: "Unbounded", sans-serif;
+  font-family: "Black Han Sans", sans-serif;
   font-size: 36px;
   margin: 0 0 10px;
 }
@@ -74,6 +74,7 @@ h1 {
   max-width: 560px;
   color: var(--muted);
   line-height: 1.5;
+  font-family: "Noto Sans KR", sans-serif;
 }
 
 .status {
@@ -87,7 +88,7 @@ h1 {
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 8px 14px;
-  font-family: "JetBrains Mono", monospace;
+  font-family: "Noto Sans KR", sans-serif;
   font-size: 12px;
   box-shadow: var(--shadow);
 }
@@ -128,7 +129,7 @@ h1 {
 
 .field span {
   display: block;
-  font-family: "JetBrains Mono", monospace;
+  font-family: "Noto Sans KR", sans-serif;
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -139,7 +140,7 @@ h1 {
 select,
 input[type="range"] {
   width: 100%;
-  font-family: "Fraunces", serif;
+  font-family: "Noto Sans KR", sans-serif;
 }
 
 select {
@@ -282,6 +283,7 @@ input[type="range"] {
 .row-text {
   font-size: 18px;
   line-height: 1.4;
+  font-family: "Noto Serif Hebrew", "Noto Serif KR", serif;
 }
 
 .row-meta {
@@ -302,7 +304,7 @@ input[type="range"] {
 }
 
 .score {
-  font-family: "Unbounded", sans-serif;
+  font-family: "Black Han Sans", sans-serif;
   font-size: 18px;
   color: var(--accent);
   text-align: right;
@@ -310,7 +312,7 @@ input[type="range"] {
 
 .score span {
   display: block;
-  font-family: "JetBrains Mono", monospace;
+  font-family: "Noto Sans KR", sans-serif;
   font-size: 10px;
   text-transform: uppercase;
   color: var(--muted);
@@ -321,7 +323,7 @@ input[type="range"] {
   border-radius: 999px;
   background: rgba(13, 39, 58, 0.85);
   color: #fef1dd;
-  font-family: "JetBrains Mono", monospace;
+  font-family: "Noto Sans KR", sans-serif;
   font-size: 11px;
   padding: 6px 12px;
   cursor: pointer;
@@ -415,6 +417,23 @@ input[type="range"] {
 .tooltip-row .note {
   font-size: 10px;
   color: rgba(254, 241, 221, 0.6);
+}
+
+.translation-tooltip {
+  background: rgba(30, 154, 165, 0.95);
+  color: #fef7ea;
+  font-family: "Noto Sans KR", sans-serif;
+}
+
+.translation-tooltip .tooltip-score {
+  font-size: 14px;
+}
+
+.translation-text {
+  font-family: "Noto Sans KR", sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #fffaf2;
 }
 
 @media (max-width: 980px) {

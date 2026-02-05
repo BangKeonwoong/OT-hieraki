@@ -17,6 +17,7 @@ export type ClauseAtom = {
   id: number;
   ref: { book: string; chapter: number; verse: number };
   hebrew: string;
+  koreanLiteral?: string | null;
   typ?: string | null;
   kind?: string | null;
   txt?: string | null;
@@ -111,7 +112,7 @@ export function scoreCandidates(
       value: distance,
       weight: -WEIGHTS.distance,
       contrib: distContrib,
-      note: "Closer candidates are favored",
+      note: "가까울수록 유리",
     });
 
     const sentenceContrib = WEIGHTS.same_sentence * (sameSentence ? 1 : 0);
@@ -120,7 +121,7 @@ export function scoreCandidates(
       value: sameSentence,
       weight: WEIGHTS.same_sentence,
       contrib: sentenceContrib,
-      note: "Same sentence bonus",
+      note: "같은 문장 보너스",
     });
 
     const typContrib = WEIGHTS.typ_match * (typMatch ? 1 : 0);
@@ -129,7 +130,7 @@ export function scoreCandidates(
       value: typMatch,
       weight: WEIGHTS.typ_match,
       contrib: typContrib,
-      note: "Matching clause type",
+      note: "같은 절 유형",
     });
 
     const txtContrib = WEIGHTS.txt_match * (txtMatch ? 1 : 0);
@@ -138,7 +139,7 @@ export function scoreCandidates(
       value: txtMatch,
       weight: WEIGHTS.txt_match,
       contrib: txtContrib,
-      note: "Same text domain",
+      note: "같은 텍스트 도메인",
     });
 
     const lexContrib = WEIGHTS.lex_overlap * lexOverlap;
@@ -147,7 +148,7 @@ export function scoreCandidates(
       value: Math.round(lexOverlap * 1000) / 1000,
       weight: WEIGHTS.lex_overlap,
       contrib: lexContrib,
-      note: "Lexeme overlap",
+      note: "어휘 겹침",
     });
 
     const priorContrib = WEIGHTS.prior * priorNorm;
@@ -156,7 +157,7 @@ export function scoreCandidates(
       value: priorCount,
       weight: WEIGHTS.prior,
       contrib: priorContrib,
-      note: "Observed mother links with same signature",
+      note: "유사 연결 빈도",
     });
 
     const rawScore = contribs.reduce((sum, item) => sum + item.contrib, 0);

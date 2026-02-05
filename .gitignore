@@ -17,3 +17,6 @@ Thumbs.db
 
 # Data
 backend/data/
+
+# Local data
+성경 직역 정보 2.csv

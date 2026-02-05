@@ -92,7 +92,7 @@ def score_candidates(
                 value=distance,
                 weight=-weights["distance"],
                 contrib=dist_contrib,
-                note="Closer candidates are favored",
+                note="가까울수록 유리",
             )
         )
 
@@ -103,7 +103,7 @@ def score_candidates(
                 value=same_sentence,
                 weight=weights["same_sentence"],
                 contrib=sentence_contrib,
-                note="Same sentence bonus",
+                note="같은 문장 보너스",
             )
         )
 
@@ -114,7 +114,7 @@ def score_candidates(
                 value=typ_match,
                 weight=weights["typ_match"],
                 contrib=typ_contrib,
-                note="Matching clause type",
+                note="같은 절 유형",
             )
         )
 
@@ -125,7 +125,7 @@ def score_candidates(
                 value=txt_match,
                 weight=weights["txt_match"],
                 contrib=txt_contrib,
-                note="Same text domain",
+                note="같은 텍스트 도메인",
             )
         )
 
@@ -136,7 +136,7 @@ def score_candidates(
                 value=round(lex_overlap, 3),
                 weight=weights["lex_overlap"],
                 contrib=lex_contrib,
-                note="Lexeme overlap",
+                note="어휘 겹침",
             )
         )
 
@@ -147,7 +147,7 @@ def score_candidates(
                 value=prior_count,
                 weight=weights["prior"],
                 contrib=prior_contrib,
-                note="Observed mother links with same signature",
+                note="유사 연결 빈도",
             )
         )
 

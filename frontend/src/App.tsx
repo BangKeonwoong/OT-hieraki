@@ -15,6 +15,13 @@ type TooltipState = {
   data: CandidateResult | null;
 };
 
+type TranslationTooltipState = {
+  visible: boolean;
+  x: number;
+  y: number;
+  text: string;
+};
+
 export default function App() {
   const [books, setBooks] = useState<string[]>([]);
   const [mode, setMode] = useState("?");
@@ -33,8 +40,16 @@ export default function App() {
     y: 0,
     data: null,
   });
+  const [translationTooltip, setTranslationTooltip] =
+    useState<TranslationTooltipState>({
+      visible: false,
+      x: 0,
+      y: 0,
+      text: "",
+    });
 
   const tooltipTimer = useRef<number | null>(null);
+  const translationTimer = useRef<number | null>(null);
 
   const [candidates, setCandidates] = useState<CandidateResult[]>([]);
   const candidatesById = useMemo(() => {
@@ -146,6 +161,9 @@ export default function App() {
       if (tooltipTimer.current) {
         window.clearTimeout(tooltipTimer.current);
       }
+      if (translationTimer.current) {
+        window.clearTimeout(translationTimer.current);
+      }
     };
   }, []);
 
@@ -186,6 +204,9 @@ export default function App() {
         setSelectedMotherId(candidate.candidateId);
       },
       onHoverStart: (event: MouseEvent, candidate: CandidateResult) => {
+        if (translationTooltip.visible) {
+          return;
+        }
         if (tooltipTimer.current) {
           window.clearTimeout(tooltipTimer.current);
         }
@@ -208,35 +229,76 @@ export default function App() {
         }
         setTooltip({ visible: false, x: 0, y: 0, data: null });
       },
+      onTextHoverStart: (event: MouseEvent, text: string | null | undefined) => {
+        if (tooltipTimer.current) {
+          window.clearTimeout(tooltipTimer.current);
+        }
+        setTooltip({ visible: false, x: 0, y: 0, data: null });
+        if (translationTimer.current) {
+          window.clearTimeout(translationTimer.current);
+        }
+        const message = text && text.trim() ? text : "직역 정보 없음";
+        const { clientX, clientY } = event;
+        translationTimer.current = window.setTimeout(() => {
+          setTranslationTooltip({
+            visible: true,
+            x: clientX,
+            y: clientY,
+            text: message,
+          });
+        }, 140);
+      },
+      onTextHoverMove: (event: MouseEvent) => {
+        if (!translationTooltip.visible) return;
+        setTranslationTooltip((prev) => ({
+          ...prev,
+          x: event.clientX,
+          y: event.clientY,
+        }));
+      },
+      onTextHoverEnd: () => {
+        if (translationTimer.current) {
+          window.clearTimeout(translationTimer.current);
+        }
+        setTranslationTooltip({ visible: false, x: 0, y: 0, text: "" });
+      },
     };
-  }, [atoms, selectedId, selectedMotherId, candidatesById, book, tooltip.visible]);
+  }, [
+    atoms,
+    selectedId,
+    selectedMotherId,
+    candidatesById,
+    book,
+    tooltip.visible,
+    translationTooltip.visible,
+  ]);
 
   return (
     <div className="app">
       <header className="topbar">
         <div>
-          <p className="eyebrow">BHSA - Mother Clause</p>
-          <h1>Anchoring Console</h1>
+          <p className="eyebrow">BHSA - 어미절</p>
+          <h1>어미절 선택 콘솔</h1>
           <p className="subtitle">
-            Select a daughter clause_atom, then weigh candidate mothers with
-            interpretable evidence.
+            딸 절(clause_atom)을 선택하면 후보 어미절을 점수와 근거로
+            제시합니다.
           </p>
         </div>
         <div className="status">
-          <div className="pill">Mode: {mode}</div>
-          <div className="pill">Clauses: {atoms.length}</div>
+          <div className="pill">모드: {mode}</div>
+          <div className="pill">절 수: {atoms.length}</div>
         </div>
       </header>
 
       <div className="layout">
         <aside className="control-panel">
           <div className="panel-header">
-            <h2>Book + Scope</h2>
-            <p>Focus the search window and pick the daughter clause.</p>
+            <h2>책 + 범위</h2>
+            <p>검색 범위를 조정하고 딸 절을 선택하세요.</p>
           </div>
 
           <label className="field">
-            <span>Book</span>
+            <span>책</span>
             <select value={book} onChange={(e) => setBook(e.target.value)}>
               {books.map((b) => (
                 <option key={b} value={b}>
@@ -247,16 +309,16 @@ export default function App() {
           </label>
 
           <label className="field">
-            <span>Candidate Scope</span>
+            <span>후보 범위</span>
             <select value={scope} onChange={(e) => setScope(e.target.value)}>
-              <option value="sentence">Same sentence</option>
-              <option value="range">Range only</option>
-              <option value="all">All previous</option>
+              <option value="sentence">같은 문장</option>
+              <option value="range">범위만</option>
+              <option value="all">이전 전체</option>
             </select>
           </label>
 
           <label className="field">
-            <span>Search Range</span>
+            <span>검색 범위</span>
             <input
               type="range"
               min={20}
@@ -265,7 +327,7 @@ export default function App() {
               value={limit}
               onChange={(e) => setLimit(Number(e.target.value))}
             />
-            <div className="range-value">{limit} clauses</div>
+            <div className="range-value">{limit} 절</div>
           </label>
 
           <div className="divider" />
@@ -274,39 +336,40 @@ export default function App() {
             <div className="legend-item">
               <span className="swatch daughter" />
               <div>
-                <strong>Daughter</strong>
-                <p>Selected clause_atom</p>
+                <strong>딸 절</strong>
+                <p>선택된 clause_atom</p>
               </div>
             </div>
             <div className="legend-item">
               <span className="swatch candidate" />
               <div>
-                <strong>Candidate</strong>
-                <p>Scored mother options</p>
+                <strong>후보 어미절</strong>
+                <p>점수화된 어미절 후보</p>
               </div>
             </div>
             <div className="legend-item">
               <span className="swatch chosen" />
               <div>
-                <strong>Chosen mother</strong>
-                <p>Saved selection</p>
+                <strong>선택된 어미절</strong>
+                <p>저장된 선택</p>
               </div>
             </div>
           </div>
 
           <div className="hint">
             <p>
-              Click a row to set the daughter. Hover a highlighted candidate to
-              view score evidence. Use "Select mother" to save.
+              행을 클릭해 딸 절을 지정하세요. 하이라이트된 후보에 마우스를
+              올리면 점수 근거를 확인할 수 있습니다. "어미절 선택"을 누르면
+              저장됩니다.
             </p>
           </div>
         </aside>
 
         <main className="list-panel" id="list-area">
           {isLoadingAtoms ? (
-            <div className="loading">Loading clause_atoms…</div>
+            <div className="loading">clause_atom 불러오는 중…</div>
           ) : atoms.length === 0 ? (
-            <div className="loading">No data loaded.</div>
+            <div className="loading">데이터가 없습니다.</div>
           ) : (
             <List
               height={Math.max(420, window.innerHeight - 250)}
@@ -320,7 +383,7 @@ export default function App() {
             </List>
           )}
           {isLoadingCandidates && (
-            <div className="loading-overlay">Scoring candidates…</div>
+            <div className="loading-overlay">후보 점수 계산 중…</div>
           )}
         </main>
       </div>
@@ -335,7 +398,7 @@ export default function App() {
               <span className="tooltip-score">
                 {(tooltip.data.score * 100).toFixed(1)}
               </span>
-              <span className="tooltip-rank">Rank #{tooltip.data.rank}</span>
+              <span className="tooltip-rank">순위 #{tooltip.data.rank}</span>
             </div>
           </div>
           <div className="tooltip-body">
@@ -346,6 +409,21 @@ export default function App() {
                 <span className="note">{item.note}</span>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+      {translationTooltip.visible && (
+        <div
+          className="tooltip translation-tooltip"
+          style={{ left: translationTooltip.x + 16, top: translationTooltip.y + 16 }}
+        >
+          <div className="tooltip-header">
+            <div>
+              <span className="tooltip-score">한글 직역</span>
+            </div>
+          </div>
+          <div className="tooltip-body">
+            <div className="translation-text">{translationTooltip.text}</div>
           </div>
         </div>
       )}
@@ -363,6 +441,9 @@ type RowData = {
   onHoverStart: (event: MouseEvent, candidate: CandidateResult) => void;
   onHoverMove: (event: MouseEvent) => void;
   onHoverEnd: () => void;
+  onTextHoverStart: (event: MouseEvent, text: string | null | undefined) => void;
+  onTextHoverMove: (event: MouseEvent) => void;
+  onTextHoverEnd: () => void;
 };
 
 function Row({ index, style, data }: ListChildComponentProps<RowData>) {
@@ -371,6 +452,7 @@ function Row({ index, style, data }: ListChildComponentProps<RowData>) {
   const isCandidate = Boolean(candidate);
   const isDaughter = data.selectedId === atom.id;
   const isChosen = data.selectedMotherId === atom.id;
+  const koreanLiteral = atom.koreanLiteral;
 
   const heat = candidate ? Math.min(1, Math.max(0, candidate.score)) : 0;
 
@@ -394,7 +476,16 @@ function Row({ index, style, data }: ListChildComponentProps<RowData>) {
           </span>
           <span className="atom-id">#{atom.id}</span>
         </div>
-        <div className="row-text">{atom.hebrew}</div>
+        <div
+          className="row-text"
+          dir="rtl"
+          lang="he"
+          onMouseEnter={(event) => data.onTextHoverStart(event, koreanLiteral)}
+          onMouseMove={(event) => data.onTextHoverMove(event)}
+          onMouseLeave={() => data.onTextHoverEnd()}
+        >
+          {atom.hebrew}
+        </div>
         <div className="row-meta">
           <span>typ {atom.typ ?? "-"}</span>
           <span>kind {atom.kind ?? "-"}</span>
@@ -407,7 +498,7 @@ function Row({ index, style, data }: ListChildComponentProps<RowData>) {
           <>
             <div className="score">
               {(candidate.score * 100).toFixed(0)}
-              <span>score</span>
+              <span>점수</span>
             </div>
             <button
               className="choose"
@@ -418,7 +509,7 @@ function Row({ index, style, data }: ListChildComponentProps<RowData>) {
                 }
               }}
             >
-              Select mother
+              어미절 선택
             </button>
           </>
         ) : (

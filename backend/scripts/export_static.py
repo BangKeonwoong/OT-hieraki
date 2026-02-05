@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import os
 from pathlib import Path
@@ -34,6 +35,41 @@ def resolve_tf_location(version: str) -> str | None:
     return None
 
 
+def resolve_korean_csv_path() -> str | None:
+    env = os.getenv("BHSA_KO_CSV")
+    if env and os.path.exists(env):
+        return env
+    default_path = Path(__file__).resolve().parents[2] / "성경 직역 정보 2.csv"
+    if default_path.exists():
+        return str(default_path)
+    return None
+
+
+def load_korean_literals(path: str | None) -> Dict[tuple, str]:
+    if not path:
+        return {}
+    mapping: Dict[tuple, str] = {}
+    with open(path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f, delimiter=";")
+        for row in reader:
+            book_raw = row.get("Book")
+            chapter_raw = row.get("Chapter")
+            verse_raw = row.get("Verse")
+            hebrew = (row.get("Hebrew Text") or "").strip()
+            korean = (row.get("Korean Literal") or "").strip()
+            if not (book_raw and chapter_raw and verse_raw and hebrew):
+                continue
+            book = book_raw
+            try:
+                chapter = int(chapter_raw)
+                verse = int(verse_raw)
+            except ValueError:
+                continue
+            if korean:
+                mapping[(book, chapter, verse, hebrew)] = korean
+    return mapping
+
+
 def export_static(output_dir: Path, version: str) -> None:
     from tf.fabric import Fabric
 
@@ -53,6 +89,7 @@ def export_static(output_dir: Path, version: str) -> None:
     L = api.L
     N = api.N
     T = api.T
+    korean_literals = load_korean_literals(resolve_korean_csv_path())
 
     book_nodes = list(F.otype.s("book"))
     books = sorted({F.book.v(node) for node in book_nodes})
@@ -114,6 +151,9 @@ def export_static(output_dir: Path, version: str) -> None:
                 "sentence": sentence_id,
                 "lexemes": lexemes,
             }
+            korean_literal = korean_literals.get((book_name, chapter, verse, hebrew.strip()))
+            if korean_literal:
+                payload["koreanLiteral"] = korean_literal
             atoms_payload.append(payload)
             id_to_index[atom] = idx
 
