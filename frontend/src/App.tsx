@@ -7,6 +7,105 @@ const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 const DATA_MODE = import.meta.env.VITE_DATA_MODE ?? "api";
 const BASE_URL = import.meta.env.BASE_URL ?? "/";
 
+const BOOK_ORDER = [
+  "Genesis",
+  "Exodus",
+  "Leviticus",
+  "Numeri",
+  "Deuteronomium",
+  "Josua",
+  "Judices",
+  "Ruth",
+  "Samuel_I",
+  "Samuel_II",
+  "Reges_I",
+  "Reges_II",
+  "Chronica_I",
+  "Chronica_II",
+  "Esra",
+  "Nehemia",
+  "Esther",
+  "Iob",
+  "Psalmi",
+  "Proverbia",
+  "Ecclesiastes",
+  "Canticum",
+  "Jesaia",
+  "Jeremia",
+  "Threni",
+  "Ezechiel",
+  "Daniel",
+  "Hosea",
+  "Joel",
+  "Amos",
+  "Obadia",
+  "Jona",
+  "Micha",
+  "Nahum",
+  "Habakuk",
+  "Zephania",
+  "Haggai",
+  "Sacharia",
+  "Maleachi",
+];
+
+const BOOK_LABELS: Record<string, string> = {
+  Genesis: "창세기",
+  Exodus: "출애굽기",
+  Leviticus: "레위기",
+  Numeri: "민수기",
+  Deuteronomium: "신명기",
+  Josua: "여호수아",
+  Judices: "사사기",
+  Ruth: "룻기",
+  Samuel_I: "사무엘상",
+  Samuel_II: "사무엘하",
+  Reges_I: "열왕기상",
+  Reges_II: "열왕기하",
+  Chronica_I: "역대상",
+  Chronica_II: "역대하",
+  Esra: "에스라",
+  Nehemia: "느헤미야",
+  Esther: "에스더",
+  Iob: "욥기",
+  Psalmi: "시편",
+  Proverbia: "잠언",
+  Ecclesiastes: "전도서",
+  Canticum: "아가",
+  Jesaia: "이사야",
+  Jeremia: "예레미야",
+  Threni: "예레미야애가",
+  Ezechiel: "에스겔",
+  Daniel: "다니엘",
+  Hosea: "호세아",
+  Joel: "요엘",
+  Amos: "아모스",
+  Obadia: "오바댜",
+  Jona: "요나",
+  Micha: "미가",
+  Nahum: "나훔",
+  Habakuk: "하박국",
+  Zephania: "스바냐",
+  Haggai: "학개",
+  Sacharia: "스가랴",
+  Maleachi: "말라기",
+};
+
+const bookIndex = new Map(BOOK_ORDER.map((name, index) => [name, index]));
+
+function sortBooks(list: string[]) {
+  return [...list].sort((a, b) => {
+    const aIndex = bookIndex.get(a) ?? 999;
+    const bIndex = bookIndex.get(b) ?? 999;
+    if (aIndex !== bIndex) return aIndex - bIndex;
+    return a.localeCompare(b);
+  });
+}
+
+function getBookLabel(book: string) {
+  return BOOK_LABELS[book] ?? book;
+}
+
 
 type TooltipState = {
   visible: boolean;
@@ -15,12 +114,6 @@ type TooltipState = {
   data: CandidateResult | null;
 };
 
-type TranslationTooltipState = {
-  visible: boolean;
-  x: number;
-  y: number;
-  text: string;
-};
 
 export default function App() {
   const [books, setBooks] = useState<string[]>([]);
@@ -30,6 +123,7 @@ export default function App() {
   const [staticData, setStaticData] = useState<StaticBookData | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedMotherId, setSelectedMotherId] = useState<number | null>(null);
+  const [selectionMap, setSelectionMap] = useState<Map<number, number>>(new Map());
   const [limit, setLimit] = useState(200);
   const [scope, setScope] = useState("sentence");
   const [isLoadingAtoms, setIsLoadingAtoms] = useState(false);
@@ -40,16 +134,8 @@ export default function App() {
     y: 0,
     data: null,
   });
-  const [translationTooltip, setTranslationTooltip] =
-    useState<TranslationTooltipState>({
-      visible: false,
-      x: 0,
-      y: 0,
-      text: "",
-    });
 
   const tooltipTimer = useRef<number | null>(null);
-  const translationTimer = useRef<number | null>(null);
 
   const [candidates, setCandidates] = useState<CandidateResult[]>([]);
   const candidatesById = useMemo(() => {
@@ -63,10 +149,11 @@ export default function App() {
       fetch(`${BASE_URL}data/books.json`)
         .then((res) => res.json())
         .then((data) => {
-          setBooks(data.books ?? []);
+          const sorted = sortBooks(data.books ?? []);
+          setBooks(sorted);
           setMode("tf-static");
-          if (data.books?.length) {
-            setBook(data.books[0]);
+          if (sorted.length) {
+            setBook(sorted[0]);
           }
         })
         .catch(() => {
@@ -78,10 +165,11 @@ export default function App() {
     fetch(`${API_BASE}/api/books`)
       .then((res) => res.json())
       .then((data) => {
-        setBooks(data.books ?? []);
+        const sorted = sortBooks(data.books ?? []);
+        setBooks(sorted);
         setMode(data.mode ?? "?");
-        if (data.books?.length) {
-          setBook(data.books[0]);
+        if (sorted.length) {
+          setBook(sorted[0]);
         }
       })
       .catch(() => {
@@ -98,6 +186,7 @@ export default function App() {
     setSelectedMotherId(null);
     setCandidates([]);
     setStaticData(null);
+    setSelectionMap(new Map());
 
     if (DATA_MODE === "static") {
       const slug = book.replace(/\s+/g, "_");
@@ -117,6 +206,57 @@ export default function App() {
         setAtoms(data.atoms ?? []);
       })
       .finally(() => setIsLoadingAtoms(false));
+  }, [book]);
+
+  useEffect(() => {
+    if (!book) return;
+    if (DATA_MODE === "static") {
+      const key = `bhsa-selections-${book}`;
+      const raw = window.localStorage.getItem(key);
+      if (!raw) {
+        setSelectionMap(new Map());
+        return;
+      }
+      try {
+        const parsed = JSON.parse(raw) as Record<
+          string,
+          { motherId: number; score: number; timestamp: string }
+        >;
+        const map = new Map<number, number>();
+        Object.entries(parsed).forEach(([daughterId, entry]) => {
+          map.set(Number(daughterId), entry.motherId);
+        });
+        setSelectionMap(map);
+      } catch {
+        setSelectionMap(new Map());
+      }
+      return;
+    }
+
+    fetch(`${API_BASE}/api/book/${encodeURIComponent(book)}/export?format=jsonl`)
+      .then((res) => res.text())
+      .then((text) => {
+        const map = new Map<number, number>();
+        text
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .forEach((line) => {
+            try {
+              const item = JSON.parse(line);
+              if (
+                typeof item.daughter_clause_atom === "number" &&
+                typeof item.chosen_mother_clause_atom === "number"
+              ) {
+                map.set(item.daughter_clause_atom, item.chosen_mother_clause_atom);
+              }
+            } catch {
+              return;
+            }
+          });
+        setSelectionMap(map);
+      })
+      .catch(() => setSelectionMap(new Map()));
   }, [book]);
 
   useEffect(() => {
@@ -161,9 +301,6 @@ export default function App() {
       if (tooltipTimer.current) {
         window.clearTimeout(tooltipTimer.current);
       }
-      if (translationTimer.current) {
-        window.clearTimeout(translationTimer.current);
-      }
     };
   }, []);
 
@@ -175,7 +312,7 @@ export default function App() {
       candidatesById,
       onSelectDaughter: (id: number) => {
         setSelectedId(id);
-        setSelectedMotherId(null);
+        setSelectedMotherId(selectionMap.get(id) ?? null);
       },
       onSelectMother: async (candidate: CandidateResult, daughterId: number) => {
         if (!book) return;
@@ -186,12 +323,21 @@ export default function App() {
           score_at_choice: candidate.score,
         };
 
+        const nextMap = new Map(selectionMap);
+        nextMap.set(daughterId, candidate.candidateId);
+        setSelectionMap(nextMap);
+
+        const localKey = `bhsa-selections-${book}`;
+        const raw = window.localStorage.getItem(localKey);
+        const existing = raw ? JSON.parse(raw) : {};
+        existing[String(daughterId)] = {
+          motherId: candidate.candidateId,
+          score: candidate.score,
+          timestamp: new Date().toISOString(),
+        };
+        window.localStorage.setItem(localKey, JSON.stringify(existing));
+
         if (DATA_MODE === "static") {
-          const key = "bhsa-selections";
-          const raw = window.localStorage.getItem(key);
-          const existing = raw ? JSON.parse(raw) : [];
-          existing.push({ ...payload, timestamp: new Date().toISOString() });
-          window.localStorage.setItem(key, JSON.stringify(existing));
           setSelectedMotherId(candidate.candidateId);
           return;
         }
@@ -204,9 +350,6 @@ export default function App() {
         setSelectedMotherId(candidate.candidateId);
       },
       onHoverStart: (event: MouseEvent, candidate: CandidateResult) => {
-        if (translationTooltip.visible) {
-          return;
-        }
         if (tooltipTimer.current) {
           window.clearTimeout(tooltipTimer.current);
         }
@@ -229,39 +372,6 @@ export default function App() {
         }
         setTooltip({ visible: false, x: 0, y: 0, data: null });
       },
-      onTextHoverStart: (event: MouseEvent, text: string | null | undefined) => {
-        if (tooltipTimer.current) {
-          window.clearTimeout(tooltipTimer.current);
-        }
-        setTooltip({ visible: false, x: 0, y: 0, data: null });
-        if (translationTimer.current) {
-          window.clearTimeout(translationTimer.current);
-        }
-        const message = text && text.trim() ? text : "직역 정보 없음";
-        const { clientX, clientY } = event;
-        translationTimer.current = window.setTimeout(() => {
-          setTranslationTooltip({
-            visible: true,
-            x: clientX,
-            y: clientY,
-            text: message,
-          });
-        }, 140);
-      },
-      onTextHoverMove: (event: MouseEvent) => {
-        if (!translationTooltip.visible) return;
-        setTranslationTooltip((prev) => ({
-          ...prev,
-          x: event.clientX,
-          y: event.clientY,
-        }));
-      },
-      onTextHoverEnd: () => {
-        if (translationTimer.current) {
-          window.clearTimeout(translationTimer.current);
-        }
-        setTranslationTooltip({ visible: false, x: 0, y: 0, text: "" });
-      },
     };
   }, [
     atoms,
@@ -270,7 +380,7 @@ export default function App() {
     candidatesById,
     book,
     tooltip.visible,
-    translationTooltip.visible,
+    selectionMap,
   ]);
 
   return (
@@ -302,7 +412,7 @@ export default function App() {
             <select value={book} onChange={(e) => setBook(e.target.value)}>
               {books.map((b) => (
                 <option key={b} value={b}>
-                  {b}
+                  {getBookLabel(b)}
                 </option>
               ))}
             </select>
@@ -412,21 +522,6 @@ export default function App() {
           </div>
         </div>
       )}
-      {translationTooltip.visible && (
-        <div
-          className="tooltip translation-tooltip"
-          style={{ left: translationTooltip.x + 16, top: translationTooltip.y + 16 }}
-        >
-          <div className="tooltip-header">
-            <div>
-              <span className="tooltip-score">한글 직역</span>
-            </div>
-          </div>
-          <div className="tooltip-body">
-            <div className="translation-text">{translationTooltip.text}</div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -441,9 +536,6 @@ type RowData = {
   onHoverStart: (event: MouseEvent, candidate: CandidateResult) => void;
   onHoverMove: (event: MouseEvent) => void;
   onHoverEnd: () => void;
-  onTextHoverStart: (event: MouseEvent, text: string | null | undefined) => void;
-  onTextHoverMove: (event: MouseEvent) => void;
-  onTextHoverEnd: () => void;
 };
 
 function Row({ index, style, data }: ListChildComponentProps<RowData>) {
@@ -453,6 +545,7 @@ function Row({ index, style, data }: ListChildComponentProps<RowData>) {
   const isDaughter = data.selectedId === atom.id;
   const isChosen = data.selectedMotherId === atom.id;
   const koreanLiteral = atom.koreanLiteral;
+  const koreanText = koreanLiteral && koreanLiteral.trim() ? koreanLiteral : "직역 정보 없음";
 
   const heat = candidate ? Math.min(1, Math.max(0, candidate.score)) : 0;
 
@@ -472,19 +565,15 @@ function Row({ index, style, data }: ListChildComponentProps<RowData>) {
       <div className="row-main">
         <div className="row-title">
           <span className="ref">
-            {atom.ref.book} {atom.ref.chapter}:{atom.ref.verse}
+            {getBookLabel(atom.ref.book)} {atom.ref.chapter}:{atom.ref.verse}
           </span>
           <span className="atom-id">#{atom.id}</span>
         </div>
-        <div
-          className="row-text"
-          dir="rtl"
-          lang="he"
-          onMouseEnter={(event) => data.onTextHoverStart(event, koreanLiteral)}
-          onMouseMove={(event) => data.onTextHoverMove(event)}
-          onMouseLeave={() => data.onTextHoverEnd()}
-        >
-          {atom.hebrew}
+        <div className="row-text-grid">
+          <div className="row-text-ko">{koreanText}</div>
+          <div className="row-text-he" dir="rtl" lang="he">
+            {atom.hebrew}
+          </div>
         </div>
         <div className="row-meta">
           <span>typ {atom.typ ?? "-"}</span>

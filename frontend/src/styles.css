@@ -280,10 +280,25 @@ input[type="range"] {
   color: var(--muted);
 }
 
-.row-text {
+.row-text-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.row-text-ko {
+  font-family: "Noto Sans KR", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.row-text-he {
+  font-family: "Noto Serif Hebrew", "Noto Serif KR", serif;
   font-size: 18px;
   line-height: 1.4;
-  font-family: "Noto Serif Hebrew", "Noto Serif KR", serif;
+  text-align: right;
 }
 
 .row-meta {
@@ -419,21 +434,13 @@ input[type="range"] {
   color: rgba(254, 241, 221, 0.6);
 }
 
-.translation-tooltip {
-  background: rgba(30, 154, 165, 0.95);
-  color: #fef7ea;
-  font-family: "Noto Sans KR", sans-serif;
-}
-
-.translation-tooltip .tooltip-score {
-  font-size: 14px;
-}
-
-.translation-text {
-  font-family: "Noto Sans KR", sans-serif;
-  font-size: 13px;
-  line-height: 1.5;
-  color: #fffaf2;
+@media (max-width: 980px) {
+  .row-text-grid {
+    grid-template-columns: 1fr;
+  }
+  .row-text-he {
+    text-align: left;
+  }
 }
 
 @media (max-width: 980px) {
