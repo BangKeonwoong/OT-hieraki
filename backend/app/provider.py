@@ -145,24 +145,35 @@ class TFProvider(BaseProvider):
         self.mode = "tf"
         self.version = version
         self._book_cache: Dict[str, BookCache] = {}
+        self._books: Optional[List[str]] = None
         self._load_tf()
 
     def _load_tf(self) -> None:
-        from tf.app import use
+        from tf.fabric import Fabric
 
-        self.app = use("etcbc/bhsa", version=self.version, silent=True)
-        api = self.app.TF
+        location = _resolve_tf_location(self.version)
+        if location:
+            TF = Fabric(locations=location, silent=True)
+        else:
+            TF = Fabric(silent=True)
+
+        api = TF.load(
+            "otype oslots book chapter verse typ kind txt pargr tab number lex mother"
+        )
         self.F = api.F
         self.E = api.E
         self.L = api.L
         self.N = api.N
         self.T = api.T
+        self.TF = TF
 
     def get_books(self) -> List[str]:
-        books = []
-        for node in self.F.otype.s("book"):
-            books.append(self.F.book.v(node))
-        return sorted(set(books))
+        if self._books is None:
+            books = []
+            for node in self.F.otype.s("book"):
+                books.append(self.F.book.v(node))
+            self._books = sorted(set(books))
+        return list(self._books)
 
     def _build_book_cache(self, book: str) -> BookCache:
         book_node = None
@@ -238,7 +249,9 @@ class TFProvider(BaseProvider):
 
         prior_counts: Dict[str, int] = {}
         for daughter in internals:
-            mothers = self.E.mother.f(daughter.id)
+            mothers = []
+            if hasattr(self.E, "mother"):
+                mothers = self.E.mother.f(daughter.id)
             if not mothers:
                 continue
             for mother_id in mothers:
@@ -309,7 +322,8 @@ def get_provider() -> BaseProvider:
     if PROVIDER is not None:
         return PROVIDER
 
-    mode = os.getenv("BHSA_MODE", "auto")
+    require_tf = os.getenv("BHSA_REQUIRE_TF", "false").lower() in {"1", "true", "yes"}
+    mode = os.getenv("BHSA_MODE", "tf" if require_tf else "auto")
     version = os.getenv("BHSA_VERSION", "2021")
     if mode == "mock":
         PROVIDER = MockProvider()
@@ -319,13 +333,18 @@ def get_provider() -> BaseProvider:
         try:
             PROVIDER = TFProvider(version=version)
             return PROVIDER
-        except Exception:
+        except Exception as exc:
+            if require_tf:
+                raise RuntimeError("BHSA Text-Fabric required but failed to load") from exc
             PROVIDER = MockProvider()
             return PROVIDER
 
     if mode == "tf":
-        PROVIDER = TFProvider(version=version)
-        return PROVIDER
+        try:
+            PROVIDER = TFProvider(version=version)
+            return PROVIDER
+        except Exception as exc:
+            raise RuntimeError("BHSA Text-Fabric required but failed to load") from exc
 
     PROVIDER = MockProvider()
     return PROVIDER
@@ -340,6 +359,32 @@ def _default_weights() -> Dict[str, float]:
         "lex_overlap": 0.65,
         "prior": 0.5,
     }
+
+
+def _resolve_tf_location(version: str) -> Optional[str]:
+    env = os.getenv("TF_DATA")
+    candidates: List[str] = []
+    if env:
+        candidates.extend(
+            [
+                env,
+                os.path.join(env, "tf", version),
+                os.path.join(env, version),
+            ]
+        )
+    home = os.path.expanduser("~")
+    candidates.extend(
+        [
+            os.path.join(home, "text-fabric-data", "github", "ETCBC", "bhsa", "tf", version),
+            os.path.join(home, "text-fabric-data", "github", "etcbc", "bhsa", "tf", version),
+        ]
+    )
+    for path in candidates:
+        if not path:
+            continue
+        if os.path.isdir(path) and os.path.exists(os.path.join(path, "otype.tf")):
+            return path
+    return None
 
 
 def _to_dto(atom: ClauseAtomInternal) -> ClauseAtomDTO:

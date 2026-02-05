@@ -21,3 +21,9 @@ Optional:
 ## Storage
 Selections are appended to `backend/data/selections.jsonl`.
 Use `/api/book/{book}/export?format=jsonl|csv` to download.
+
+## Environment
+
+- `BHSA_REQUIRE_TF=true` to fail fast if Text-Fabric is unavailable.
+- `BHSA_VERSION=2021` (default).
+- `TF_DATA=/path/to/text-fabric-data` (optional cache location).

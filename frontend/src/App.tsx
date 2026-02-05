@@ -1,43 +1,12 @@
 import { FixedSizeList as List, ListChildComponentProps } from "react-window";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent } from "react";
+import { computeCandidates, CandidateResult, ClauseAtom, StaticBookData } from "./scoring";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
+const DATA_MODE = import.meta.env.VITE_DATA_MODE ?? "api";
+const BASE_URL = import.meta.env.BASE_URL ?? "/";
 
-type Ref = {
-  book: string;
-  chapter: number;
-  verse: number;
-};
-
-type ClauseAtom = {
-  id: number;
-  ref: Ref;
-  hebrew: string;
-  typ?: string | null;
-  kind?: string | null;
-  txt?: string | null;
-  pargr?: string | null;
-  tab?: number | null;
-  number?: number | null;
-  firstSlot?: number | null;
-  lastSlot?: number | null;
-};
-
-type EvidenceItem = {
-  feature: string;
-  value: string | number | boolean | null;
-  weight: number;
-  contrib: number;
-  note: string;
-};
-
-type CandidateResult = {
-  candidateId: number;
-  score: number;
-  rank: number;
-  evidence: EvidenceItem[];
-};
 
 type TooltipState = {
   visible: boolean;
@@ -51,6 +20,7 @@ export default function App() {
   const [mode, setMode] = useState("?");
   const [book, setBook] = useState<string>("");
   const [atoms, setAtoms] = useState<ClauseAtom[]>([]);
+  const [staticData, setStaticData] = useState<StaticBookData | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedMotherId, setSelectedMotherId] = useState<number | null>(null);
   const [limit, setLimit] = useState(200);
@@ -74,6 +44,22 @@ export default function App() {
   }, [candidates]);
 
   useEffect(() => {
+    if (DATA_MODE === "static") {
+      fetch(`${BASE_URL}data/books.json`)
+        .then((res) => res.json())
+        .then((data) => {
+          setBooks(data.books ?? []);
+          setMode("tf-static");
+          if (data.books?.length) {
+            setBook(data.books[0]);
+          }
+        })
+        .catch(() => {
+          setBooks([]);
+        });
+      return;
+    }
+
     fetch(`${API_BASE}/api/books`)
       .then((res) => res.json())
       .then((data) => {
@@ -96,6 +82,19 @@ export default function App() {
     setSelectedId(null);
     setSelectedMotherId(null);
     setCandidates([]);
+    setStaticData(null);
+
+    if (DATA_MODE === "static") {
+      const slug = book.replace(/\s+/g, "_");
+      fetch(`${BASE_URL}data/books/${slug}.json`)
+        .then((res) => res.json())
+        .then((data: StaticBookData) => {
+          setAtoms(data.atoms ?? []);
+          setStaticData(data);
+        })
+        .finally(() => setIsLoadingAtoms(false));
+      return;
+    }
 
     fetch(`${API_BASE}/api/book/${encodeURIComponent(book)}/clause-atoms`)
       .then((res) => res.json())
@@ -110,6 +109,25 @@ export default function App() {
       setCandidates([]);
       return;
     }
+    if (DATA_MODE === "static") {
+      if (!staticData) {
+        setCandidates([]);
+        return;
+      }
+      setIsLoadingCandidates(true);
+      const results = computeCandidates(
+        staticData.atoms,
+        selectedId,
+        limit,
+        scope,
+        staticData.priorCounts ?? {},
+        staticData.priorMax ?? 0
+      );
+      setCandidates(results);
+      setIsLoadingCandidates(false);
+      return;
+    }
+
     setIsLoadingCandidates(true);
     fetch(
       `${API_BASE}/api/book/${encodeURIComponent(
@@ -121,7 +139,7 @@ export default function App() {
         setCandidates(data.candidates ?? []);
       })
       .finally(() => setIsLoadingCandidates(false));
-  }, [book, selectedId, limit, scope]);
+  }, [book, selectedId, limit, scope, staticData]);
 
   useEffect(() => {
     return () => {
@@ -149,6 +167,17 @@ export default function App() {
           chosen_mother_clause_atom: candidate.candidateId,
           score_at_choice: candidate.score,
         };
+
+        if (DATA_MODE === "static") {
+          const key = "bhsa-selections";
+          const raw = window.localStorage.getItem(key);
+          const existing = raw ? JSON.parse(raw) : [];
+          existing.push({ ...payload, timestamp: new Date().toISOString() });
+          window.localStorage.setItem(key, JSON.stringify(existing));
+          setSelectedMotherId(candidate.candidateId);
+          return;
+        }
+
         await fetch(`${API_BASE}/api/book/${encodeURIComponent(book)}/selection`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
